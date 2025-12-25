@@ -4,9 +4,14 @@ import requests
 import io
 import base64
 from pypdf import PdfReader 
+import os
 
 app = Flask(__name__)
 CORS(app) 
+
+@app.route('/', methods=['GET'])
+def home():
+    return "PDF Parser is Running!", 200
 
 @app.route('/parse-pdf', methods=['POST'])
 def parse_pdf():
@@ -29,16 +34,20 @@ def parse_pdf():
             reader = PdfReader(pdf_file)
             text = ""
             for page in reader.pages:
-                text += page.extract_text() + "\n"
+                try:
+                    page_text = page.extract_text(extraction_mode="layout")
+                except:
+                    page_text = page.extract_text()
+                text += page_text + "\n"
             
             return jsonify({"success": True, "text": text})
 
         return jsonify({"success": False, "error": "No file provided"}), 400
 
     except Exception as e:
+        print(f"Error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
-    import os
-    port = int(os.environ.get('PORT', 10000))
+    port = int(os.environ.get('PORT', 10000)) 
     app.run(host='0.0.0.0', port=port)
