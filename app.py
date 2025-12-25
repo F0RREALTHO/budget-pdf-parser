@@ -2,11 +2,12 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import io
+import base64  # ✅ Added for Base64 decoding
 from pdfminer.high_level import extract_text
 import os
 
 app = Flask(__name__)
-CORS(app) # Allows your App to talk to this Server
+CORS(app) 
 
 @app.route('/', methods=['GET'])
 def home():
@@ -15,32 +16,52 @@ def home():
 @app.route('/parse-pdf', methods=['POST'])
 def parse_pdf():
     try:
-        # 1. Get URL from App
         data = request.json
-        file_url = data.get('url')
+        pdf_file = None
 
-        if not file_url:
-            return jsonify({"success": False, "error": "No URL provided"}), 400
+        # ---------------------------------------------------------
+        # OPTION A: Handle Base64 Data (The "Free Firestore Hack")
+        # ---------------------------------------------------------
+        if 'file_data' in data:
+            b64_string = data['file_data']
+            
+            # Clean the string if it has the "data:application/pdf;base64," prefix
+            if "," in b64_string:
+                b64_string = b64_string.split(",")[1]
+            
+            # Decode the string back into bytes
+            pdf_bytes = base64.b64decode(b64_string)
+            pdf_file = io.BytesIO(pdf_bytes)
 
-        # 2. Download PDF
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(file_url, headers=headers)
-        response.raise_for_status()
+        # ---------------------------------------------------------
+        # OPTION B: Handle URL (The original Firebase Storage way)
+        # ---------------------------------------------------------
+        elif 'url' in data:
+            file_url = data['url']
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            response = requests.get(file_url, headers=headers)
+            response.raise_for_status()
+            pdf_file = io.BytesIO(response.content)
 
-        # 3. Extract Text
-        with io.BytesIO(response.content) as pdf_file:
+        else:
+            return jsonify({"success": False, "error": "No 'file_data' or 'url' provided"}), 400
+
+        # ---------------------------------------------------------
+        # EXTRACT TEXT
+        # ---------------------------------------------------------
+        if pdf_file:
             raw_text = extract_text(pdf_file)
-
-        # 4. Return Text
-        return jsonify({
-            "success": True, 
-            "text": raw_text
-        })
+            return jsonify({
+                "success": True, 
+                "text": raw_text
+            })
+        else:
+            return jsonify({"success": False, "error": "Failed to process file"}), 500
 
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 10000)) 
+    app.run(host='0.0.0.0', port=port)
