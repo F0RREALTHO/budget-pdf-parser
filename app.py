@@ -19,19 +19,35 @@ def parse_pdf():
         data = request.json
         pdf_file = None
 
+        # 1. Load File Data
         if 'file_data' in data:
             b64_string = data['file_data']
             if "," in b64_string:
                 b64_string = b64_string.split(",")[1]
             pdf_bytes = base64.b64decode(b64_string)
             pdf_file = io.BytesIO(pdf_bytes)
-
         elif 'url' in data:
             response = requests.get(data['url'])
             pdf_file = io.BytesIO(response.content)
 
         if pdf_file:
             reader = PdfReader(pdf_file)
+
+            # 2. Check Encryption
+            if reader.is_encrypted:
+                # Check if password was sent in this request
+                password = data.get('password')
+                
+                if not password:
+                    # Tell App to ask user for password
+                    return jsonify({"success": False, "error": "PASSWORD_REQUIRED"})
+                
+                # Try to unlock
+                is_unlocked = reader.decrypt(password)
+                if not is_unlocked: 
+                     return jsonify({"success": False, "error": "INVALID_PASSWORD"})
+
+            # 3. Extract Text (Layout Mode)
             text = ""
             for page in reader.pages:
                 try:
