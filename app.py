@@ -19,7 +19,6 @@ def parse_pdf():
         data = request.json
         pdf_file = None
 
-        # 1. Load File Data
         if 'file_data' in data:
             b64_string = data['file_data']
             if "," in b64_string:
@@ -33,21 +32,24 @@ def parse_pdf():
         if pdf_file:
             reader = PdfReader(pdf_file)
 
-            # 2. Check Encryption
+            # ✅ FIX: Handle "Fake" Encryption
             if reader.is_encrypted:
-                # Check if password was sent in this request
-                password = data.get('password')
+                # 1. Try unlocking with an empty string first (Fixes files that allow reading but not editing)
+                reader.decrypt("")
                 
-                if not password:
-                    # Tell App to ask user for password
-                    return jsonify({"success": False, "error": "PASSWORD_REQUIRED"})
-                
-                # Try to unlock
-                is_unlocked = reader.decrypt(password)
-                if not is_unlocked: 
-                     return jsonify({"success": False, "error": "INVALID_PASSWORD"})
+                # 2. If the user sent a specific password, try that logic
+                if data.get('password'):
+                    reader.decrypt(data.get('password'))
 
-            # 3. Extract Text (Layout Mode)
+            # 3. Verify we can actually read the file
+            try:
+                # We try to access the first page. If it fails, it's truly locked.
+                _ = len(reader.pages)
+            except:
+                # NOW we know it's actually locked
+                return jsonify({"success": False, "error": "PASSWORD_REQUIRED"})
+
+            # 4. Extract Text (Universal Layout Mode)
             text = ""
             for page in reader.pages:
                 try:
